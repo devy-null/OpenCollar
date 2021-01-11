@@ -4,5 +4,5 @@ See https://github.com/OpenCollarTeam/OpenCollar for more info about the root re
 
 ### My changes
 
-Add a gag
-Add a armbinder
+* Add a gag
+* Add a armbinder
