@@ -1,8 +1,9 @@
+// oc_rlvextension
 // This file is part of OpenCollar.
 //  Copyright (c) 2018 - 2019 Tashia Redrose, Silkie Sabra, lillith xue                            
 // Licensed under the GPLv2.  See LICENSE for full details. 
 
-string g_sScriptVersion = "8.0";
+//string g_sScriptVersion = "8.0";
 
 string g_sParentMenu = "RLV";
 string g_sSubMenu1 = "Force Sit";
@@ -14,7 +15,7 @@ integer g_iStrictSit=FALSE; // Default - do not use strict mode
 integer CMD_OWNER = 500;
 //integer CMD_TRUSTED = 501;
 //integer CMD_GROUP = 502;
-integer CMD_WEARER = 503;
+//integer CMD_WEARER = 503;
 integer CMD_EVERYONE = 504;
 //integer CMD_RLV_RELAY = 507;
 //integer CMD_SAFEWORD = 510;
@@ -32,7 +33,7 @@ integer LM_SETTING_SAVE = 2000;//scripts send messages on this channel to have s
 //integer LM_SETTING_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
 integer LM_SETTING_RESPONSE = 2002;//the settings script sends responses on this channel
 integer LM_SETTING_DELETE = 2003;//delete token from settings
-//integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
+integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -90,6 +91,10 @@ integer g_iOwnerEx = 127;
 integer g_iTrustedEx = 95;
 
 list g_lMenuIDs;
+//integer TIMEOUT_READY = 30497;
+//integer TIMEOUT_REGISTER = 30498;
+//integer TIMEOUT_FIRED = 30499;
+//list g_lSettingsReqs = [];
 integer g_iMenuStride;
 integer g_iLocked=FALSE;
 
@@ -352,11 +357,38 @@ UserCommand(integer iNum, string sStr, key kID) {
     }
 }
 
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
 default
 {
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
+{
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    
     state_entry()
     {
-        if(llGetStartParameter()!= 0) state inUpdate;
+        if(llGetStartParameter()!= 0)llResetScript();
     }
     link_message(integer iSender,integer iNum,string sStr,key kID){
         if(iNum >= CMD_OWNER && iNum <= CMD_EVERYONE) UserCommand(iNum, sStr, kID);
@@ -439,10 +471,15 @@ default
                     }
                 } else if (sMenu == "Force Sit") MenuForceSit(kAv,iAuth);
                 else if (sMenu == "Restrictions~sensor") {
-                    if(sMsg == Checkbox(g_iStrictSit,"Strict Sit") && iAuth == CMD_OWNER){
-                        g_iStrictSit=1-g_iStrictSit;
-                        llMessageLinked(LINK_SET, LM_SETTING_SAVE, "rlvext_strict="+(string)g_iStrictSit, "");
-                        MenuForceSit(kAv,iAuth);
+                    if(sMsg == Checkbox(g_iStrictSit,"Strict Sit")){
+                        if(iAuth != CMD_OWNER) {
+                            llMessageLinked(LINK_SET, NOTIFY, "0%NOACCESS%", kAv);
+                            MenuForceSit(kAv,iAuth);
+                        } else{
+                            g_iStrictSit=1-g_iStrictSit;
+                            llMessageLinked(LINK_SET, LM_SETTING_SAVE, "rlvext_strict="+(string)g_iStrictSit, "");
+                            MenuForceSit(kAv,iAuth);
+                        }
                         return;
                     }
                     
@@ -517,12 +554,23 @@ default
                     }
                 }
             }
+        }else if(iNum == LM_SETTING_EMPTY){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
         } else if(iNum == LM_SETTING_RESPONSE){
         // Detect here the Settings
             list lParams = llParseString2List(sStr, ["="], []);
             string sToken = llList2String(lParams, 0);
             string sValue = llList2String(lParams, 1);
-             integer i = llSubStringIndex(sToken, "_");
+            integer i = llSubStringIndex(sToken, "_");
+            
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sToken]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+            
             if (sToken == "rlvext_mincamdist") {
                 g_fMinCamDist = (float)sValue;
                 llMessageLinked(LINK_SET,LINK_CMD_RESTDATA,"MinCamDist="+(string)g_fMinCamDist,kID);
@@ -582,6 +630,10 @@ default
             }
         } else if(iNum == LM_SETTING_DELETE){
             // This is recieved back from settings when a setting is deleted
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+            
             if(sStr == "global_locked") g_iLocked=FALSE;
             else if (sStr == "auth_owner") {
                 ApplyAllExceptions(TRUE,TRUE);
@@ -597,7 +649,7 @@ default
                 ApplyAllExceptions(TRUE,FALSE);
             }
         } else if(iNum == -99999){
-            if(sStr == "update_active")state inUpdate;
+            if(sStr == "update_active")llResetScript();
         }else if (iNum == RLV_OFF){
             ApplyAllExceptions(TRUE,TRUE);
             g_iRLV = FALSE;
@@ -632,10 +684,5 @@ default
             llSay(0,MuffleText(sMsg));
             llSetObjectName(sObjectName);
         }
-    }
-}
-state inUpdate{
-    link_message(integer iSender, integer iNum, string sMsg, key kID){
-        if(iNum == REBOOT)llResetScript();
     }
 }

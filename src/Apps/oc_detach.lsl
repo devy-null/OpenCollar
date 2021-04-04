@@ -1,7 +1,7 @@
   
 /*
 This file is a part of OpenCollar.
-Copyright ©2020
+Copyright ©2021
 
 : Contributors :
 
@@ -43,12 +43,12 @@ integer CMD_RELAY_SAFEWORD = 511;
 integer NOTIFY = 1002;
 integer REBOOT = -1000;
 
-integer LM_SETTING_SAVE = 2000;//scripts send messages on this channel to have settings saved
+//integer LM_SETTING_SAVE = 2000;//scripts send messages on this channel to have settings saved
 //str must be in form of "token=value"
-integer LM_SETTING_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
-integer LM_SETTING_RESPONSE = 2002;//the settings script sends responses on this channel
-integer LM_SETTING_DELETE = 2003;//delete token from settings
-integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
+//integer LM_SETTING_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
+//integer LM_SETTING_RESPONSE = 2002;//the settings script sends responses on this channel
+//integer LM_SETTING_DELETE = 2003;//delete token from settings
+//integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -84,7 +84,6 @@ Menu(key kID, integer iAuth) {
 }
 
 UserCommand(integer iNum, string sStr, key kID) {
-    if (iNum<CMD_OWNER || iNum>CMD_WEARER) return;
     if (llSubStringIndex(sStr,llToLower(g_sSubMenu)) && sStr != "menu "+g_sSubMenu) return;
     
     if (sStr==g_sSubMenu || sStr == "menu "+g_sSubMenu) Menu(kID, iNum);
@@ -98,22 +97,42 @@ UserCommand(integer iNum, string sStr, key kID) {
     }
 }
 
-integer STATE_MANAGER = 7003;
-integer STATE_MANAGER_REPLY = 7004;
 key g_kWearer;
 list g_lMenuIDs;
 integer g_iMenuStride;
 integer g_iLocked=FALSE;
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
 default
 {
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
+{
     on_rez(integer t){
-        if(llGetOwner()!=g_kWearer) llResetScript();
+        llResetScript();
     }
     state_entry()
     {
         //llScriptProfiler(TRUE);
         g_kWearer = llGetOwner();
-        llMessageLinked(LINK_SET, STATE_MANAGER, llList2Json(JSON_OBJECT, ["type", "subscribe", "script", llGetScriptName(), "menu_label", g_sSubMenu, "dependencies", -1, "baseCmds", "detach"]), "");
         //float baseCalc = llPow(2, 0);
         //llSay(0, "Pow 2^0 : "+(string)baseCalc);
         //llSetTimerEvent(1);
@@ -123,7 +142,7 @@ default
     }
 */    
     link_message(integer iSender,integer iNum,string sStr,key kID){
-        if(iNum >= CMD_OWNER && iNum <= CMD_WEARER) UserCommand(iNum, sStr, kID);
+        if(iNum >= CMD_OWNER && iNum <= CMD_EVERYONE) UserCommand(iNum, sStr, kID);
         else if(iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
             llMessageLinked(iSender, MENUNAME_RESPONSE, g_sParentMenu+"|"+ g_sSubMenu,"");
         else if(iNum == DIALOG_RESPONSE){
@@ -148,21 +167,7 @@ default
         }else if (iNum == DIALOG_TIMEOUT) {
             integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
             g_lMenuIDs = llDeleteSubList(g_lMenuIDs, iMenuIndex - 1, iMenuIndex +3);  //remove stride from g_lMenuIDs
-        } else if(iNum == STATE_MANAGER){
-            if(llJsonGetValue(sStr,["type"])=="scan"){
-                llMessageLinked(LINK_SET, STATE_MANAGER, llList2Json(JSON_OBJECT, ["type", "subscribe", "script", llGetScriptName(), "menu_label", g_sSubMenu, "dependencies", -1, "baseCmds", "detach"]), "");
-            } else if(llJsonGetValue(sStr, ["type"])=="ping" && llJsonGetValue(sStr,["script"])==llGetScriptName()){
-                if(llGetListLength(g_lMenuIDs) == 0){}else{
-                    llMessageLinked(LINK_SET, STATE_MANAGER_REPLY, llList2Json(JSON_OBJECT, ["type","pong", "script", llGetScriptName(), "menu", g_sSubMenu]),"");
-                }
-            } 
-        } else if(iNum == LM_SETTING_RESPONSE){
-            // Detect here the Settings
-            list lSettings = llParseString2List(sStr, ["_","="],[]);
-        } else if(iNum == LM_SETTING_DELETE){
-            // This is recieved back from settings when a setting is deleted
-            list lSettings = llParseString2List(sStr, ["_"],[]);
-        }
+        } else if(iNum == REBOOT)llResetScript();
         //llOwnerSay(llDumpList2String([iSender,iNum,sStr,kID],"^"));
     }
 }
